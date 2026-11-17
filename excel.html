@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel 智能刷题与模拟考试系统</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 SheetJS 用于本地解析与导出 Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- 引入 Inter & Noto Sans SC 字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f3f6fb;
+            color: #1e293b;
+        }
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        .option-card {
+            transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .option-card:active {
+            transform: scale(0.995);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.25s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- 顶部全局通知提示框 (替代 alert) -->
+    <div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none w-11/12 max-w-md"></div>
+
+    <!-- 自定义确认模态框 (替代 confirm) -->
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 animate-fade-in">
+            <h3 id="confirm-title" class="text-lg font-bold text-slate-800 mb-2">确认操作</h3>
+            <p id="confirm-message" class="text-sm text-slate-600 mb-6 leading-relaxed">确定要执行此操作吗？</p>
+            <div class="flex justify-end gap-3">
+                <button id="confirm-cancel-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition">取消</button>
+                <button id="confirm-ok-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 顶部导航栏 -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-2xs">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3 cursor-pointer" onclick="goHome()">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-slate-800 tracking-tight leading-none">Excel 智能刷题宝</h1>
+                    <p class="text-xs text-slate-500 mt-1">本地解析 · 随机组卷 · 错题自动沉淀</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+                <button onclick="openMistakeNotebook()" class="relative flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200/70 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                    </svg>
+                    <span>错题本</span>
+                    <span id="nav-mistake-count" class="ml-0.5 px-1.5 py-0.5 text-xs font-bold bg-rose-600 text-white rounded-full">0</span>
+                </button>
+                <button id="header-home-btn" onclick="confirmReturnHome()" class="hidden items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+                    </svg>
+                    <span class="hidden sm:inline">返回首页</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区域 -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
+
+        <!-- ================= 视图 1：首页导入与组卷设置 ================= -->
+        <section id="view-home" class="max-w-4xl mx-auto space-y-6 animate-fade-in">
+            
+            <!-- 上传区域卡片 -->
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 sm:p-8">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800">第一步：导入 Excel 题库</h2>
+                        <p class="text-sm text-slate-500 mt-1">完美匹配您的表头：<span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">题型 | 题目 | 选项1 | 选项2 | 选项3 | 选项4 | 选项5 | 正确答案</span></p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="downloadTemplateExcel()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+                            <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            下载标准模板
+                        </button>
+                        <button onclick="loadSampleBank()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200/60 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            加载示例题库体验
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 拖拽上传框 -->
+                <div id="drop-zone" class="relative border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl p-8 sm:p-10 text-center bg-slate-50/60 hover:bg-indigo-50/30 transition cursor-pointer group">
+                    <input type="file" id="excel-file-input" accept=".xlsx,.xls,.csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFileSelect(event)">
+                    <div class="w-14 h-14 mx-auto rounded-2xl bg-white shadow-sm border border-slate-200/80 flex items-center justify-center text-indigo-600 group-hover:scale-105 transition mb-4">
+                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                    </div>
+                    <p class="text-base font-semibold text-slate-700">点击选择 Excel 文件，或将文件拖拽至此处</p>
+                    <p class="text-xs text-slate-400 mt-1.5">支持 .xlsx / .xls / .csv 格式 · 纯本地解析，题库绝不上传服务器</p>
+                </div>
+
+                <!-- 已导入题库信息条 -->
+                <div id="bank-status-card" class="hidden mt-6 p-4 sm:p-5 rounded-2xl bg-emerald-50/80 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
+                    <div class="flex items-start sm:items-center gap-3.5">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span id="bank-filename" class="font-bold text-slate-800 text-sm sm:text-base">题库已就绪</span>
+                                <span class="px-2 py-0.5 text-xs font-semibold bg-emerald-600 text-white rounded-md">解析成功</span>
+                            </div>
+                            <p id="bank-stats-text" class="text-xs sm:text-sm text-emerald-800 mt-1">共加载 0 道有效题目</p>
+                        </div>
+                    </div>
+                    <button onclick="document.getElementById('excel-file-input').click()" class="text-xs font-medium text-emerald-700 hover:text-emerald-900 underline shrink-0 self-end sm:self-center">
+                        重新上传文件
+                    </button>
+                </div>
+            </div>
+
+            <!-- 组卷参数与模式选择卡片 -->
+            <div id="quiz-config-card" class="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 sm:p-8 opacity-60 pointer-events-none transition-opacity duration-300">
+                <h2 class="text-xl font-bold text-slate-800 mb-6">第二步：组卷规则与模式选择</h2>
+
+                <!-- 参数设置网格 -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                    <!-- 抽题数量 -->
+                    <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/70">
+                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">随机抽取题数</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="config-question-count" value="100" min="1" max="1000" onchange="updateScorePreview()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-base font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <span class="text-sm font-medium text-slate-600 shrink-0">道</span>
+                        </div>
+                        <p id="config-count-hint" class="text-xs text-slate-400 mt-1.5">默认随机抽取100道（不足则全抽）</p>
+                    </div>
+
+                    <!-- 分值计算预览 -->
+                    <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/70">
+                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">总分与每题分值</label>
+                        <div class="flex items-baseline gap-2 py-1">
+                            <span class="text-2xl font-extrabold text-indigo-600">100</span>
+                            <span class="text-sm font-medium text-slate-600">分满分</span>
+                        </div>
+                        <p id="config-score-per-q" class="text-xs text-slate-500 mt-1.5">每题约 <span class="font-bold text-slate-700">1.0</span> 分</p>
+                    </div>
+
+                    <!-- 题型筛选 -->
+                    <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/70">
+                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">题型范围筛选</label>
+                        <select id="config-type-filter" onchange="onTypeFilterChange()" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="ALL">全部题型混合随机</option>
+                        </select>
+                        <p id="config-filtered-total" class="text-xs text-slate-400 mt-1.5">当前可选题库：0 题</p>
+                    </div>
+                </div>
+
+                <!-- 两大模式启动按钮 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <!-- 练习模式 -->
+                    <div onclick="startQuiz('practice')" class="group relative overflow-hidden rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-teal-50/40 hover:border-emerald-500 p-6 cursor-pointer transition-all hover:shadow-md">
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">边做边看答案</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-800 group-hover:text-emerald-700 transition">开始练习模式</h3>
+                        <p class="text-sm text-slate-600 mt-1.5 leading-relaxed">选定答案后<strong class="text-emerald-700">立即显示对错与正确答案</strong>，适合日常背题、巩固记忆，答错自动记入错题本。</p>
+                        <div class="mt-4 inline-flex items-center text-sm font-bold text-emerald-600 group-hover:translate-x-1 transition">
+                            立即开始刷题 <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        </div>
+                    </div>
+
+                    <!-- 考试模式 -->
+                    <div onclick="startQuiz('exam')" class="group relative overflow-hidden rounded-2xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50/80 to-blue-50/40 hover:border-indigo-500 p-6 cursor-pointer transition-all hover:shadow-md">
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700">满分100分测验</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-800 group-hover:text-indigo-700 transition">开始考试模式</h3>
+                        <p class="text-sm text-slate-600 mt-1.5 leading-relaxed">全真模拟考场环境，答题时不提示对错；<strong class="text-indigo-700">交卷后自动结算分数</strong>并生成本场错题本。</p>
+                        <div class="mt-4 inline-flex items-center text-sm font-bold text-indigo-600 group-hover:translate-x-1 transition">
+                            进入模拟考场 <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 表头格式说明提示 -->
+            <div class="bg-white/70 rounded-2xl border border-slate-200/80 p-5 text-xs text-slate-500 space-y-2">
+                <div class="font-bold text-slate-700 flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Excel 表格兼容性说明
+                </div>
+                <p>1. 您的 Excel 第一行表头需包含：<code class="text-slate-700 font-semibold">题型</code>、<code class="text-slate-700 font-semibold">题目</code>、<code class="text-slate-700 font-semibold">选项1</code>、<code class="text-slate-700 font-semibold">选项2</code>、<code class="text-slate-700 font-semibold">选项3</code>、<code class="text-slate-700 font-semibold">选项4</code>、<code class="text-slate-700 font-semibold">选项5</code>、<code class="text-slate-700 font-semibold">正确答案</code>（顺序任意，空选项会自动忽略）。</p>
+                <p>2. <code class="text-slate-700 font-semibold">正确答案</code> 列支持多种常见写法：如 <code class="bg-slate-200/70 px-1 rounded">A</code>、<code class="bg-slate-200/70 px-1 rounded">AB</code>、<code class="bg-slate-200/70 px-1 rounded">A,B,C</code>、<code class="bg-slate-200/70 px-1 rounded">1</code>（对应选项1/A）、<code class="bg-slate-200/70 px-1 rounded">对/错</code>（判断题）等，系统均会自动智能识别转换。</p>
+            </div>
+        </section>
+
+        <!-- ================= 视图 2：答题与考试进行中 ================= -->
+        <section id="view-quiz" class="hidden animate-fade-in">
+            <!-- 顶部状态条 -->
+            <div class="bg-white rounded-2xl shadow-xs border border-slate-200/80 px-4 sm:px-6 py-3.5 mb-6 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <span id="quiz-mode-badge" class="px-3 py-1 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700">考试模式</span>
+                    <span class="text-sm font-medium text-slate-600">
+                        进度：<strong id="quiz-progress-text" class="text-slate-900">1 / 100</strong>
+                    </span>
+                    <span class="hidden sm:inline-block text-xs text-slate-400">|</span>
+                    <span id="quiz-score-unit-badge" class="hidden sm:inline-block text-xs font-medium text-slate-500">每题 1.0 分 · 满分 100 分</span>
+                </div>
+
+                <div class="flex items-center gap-3 sm:gap-4 ml-auto">
+                    <!-- 练习模式实时正确率 -->
+                    <div id="practice-live-stats" class="hidden items-center gap-3 text-xs sm:text-sm">
+                        <span class="text-emerald-600 font-semibold">对 <b id="live-correct-num">0</b></span>
+                        <span class="text-rose-600 font-semibold">错 <b id="live-wrong-num">0</b></span>
+                    </div>
+
+                    <!-- 考试计时器 -->
+                    <div id="exam-timer-box" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-mono text-sm font-bold">
+                        <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span id="exam-timer-display">00:00</span>
+                    </div>
+
+                    <!-- 交卷 / 结束按钮 -->
+                    <button id="submit-quiz-btn" onclick="handleSubmitQuizClick()" class="px-4 py-2 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs transition">
+                        交卷评分
+                    </button>
+                </div>
+            </div>
+
+            <!-- 主体两栏布局：左侧题目区 + 右侧答题卡 -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                <!-- 左侧：题目展示与作答区 (占 8 列) -->
+                <div class="lg:col-span-8 bg-white rounded-3xl shadow-sm border border-slate-200/80 p-5 sm:p-8">
+                    <!-- 题号与题型标签 -->
+                    <div class="flex items-center justify-between gap-2 mb-5">
+                        <div class="flex items-center gap-2.5">
+                            <span id="q-number-badge" class="px-3 py-1 rounded-xl bg-slate-800 text-white text-sm font-bold">第 1 题</span>
+                            <span id="q-type-badge" class="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200/70 text-xs font-bold">单选题</span>
+                        </div>
+                        <span id="q-point-tag" class="text-xs font-medium text-slate-400">本题 1.0 分</span>
+                    </div>
+
+                    <!-- 题干内容 -->
+                    <div id="q-title-text" class="text-base sm:text-lg font-semibold text-slate-800 leading-relaxed mb-6 select-text">
+                        正在加载题目...
+                    </div>
+
+                    <!-- 选项列表容器 -->
+                    <div id="q-options-container" class="space-y-3 mb-6">
+                        <!-- 动态渲染选项 A-E -->
+                    </div>
+
+                    <!-- 多选题确认按钮 (仅多选题且未锁定时显示) -->
+                    <div id="multi-submit-bar" class="hidden mb-6">
+                        <button onclick="confirmMultiChoiceAnswer()" class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm transition">
+                            确认所选答案
+                        </button>
+                        <span class="ml-3 text-xs text-slate-400">多选题可选择多个选项后点击确认</span>
+                    </div>
+
+                    <!-- 练习模式即时解析反馈框 -->
+                    <div id="practice-feedback-box" class="hidden rounded-2xl p-4 sm:p-5 mb-6 border animate-fade-in">
+                        <div class="flex items-center gap-2.5 mb-2">
+                            <span id="feedback-status-icon" class="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold">✓</span>
+                            <span id="feedback-status-title" class="font-bold text-base">回答正确！</span>
+                        </div>
+                        <div class="text-sm space-y-1 pl-8.5">
+                            <p class="text-slate-700">正确答案：<strong id="feedback-correct-ans" class="text-emerald-700 font-mono text-base ml-1">A</strong></p>
+                            <p id="feedback-user-ans-row" class="text-slate-600">您的选择：<strong id="feedback-user-ans" class="text-rose-600 font-mono text-base ml-1">B</strong></p>
+                        </div>
+                    </div>
+
+                    <!-- 底部上一题 / 下一题导航 -->
+                    <div class="pt-5 border-t border-slate-100 flex items-center justify-between gap-3">
+                        <button id="prev-q-btn" onclick="navigateQuestion(-1)" class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-40 disabled:pointer-events-none transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                            上一题
+                        </button>
+
+                        <label id="auto-next-wrapper" class="hidden sm:flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+                            <input type="checkbox" id="auto-next-checkbox" class="rounded text-indigo-600 focus:ring-indigo-500" checked>
+                            <span>答对自动跳转下一题</span>
+                        </label>
+
+                        <button id="next-q-btn" onclick="navigateQuestion(1)" class="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-semibold bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-40 disabled:pointer-events-none transition">
+                            下一题
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 右侧：答题卡导航网格 (占 4 列) -->
+                <div class="lg:col-span-4 bg-white rounded-3xl shadow-sm border border-slate-200/80 p-5 sm:p-6 sticky top-22">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-slate-800 text-base">答题卡</h3>
+                        <span id="sheet-answered-summary" class="text-xs font-medium text-slate-500">已答 0 / 100</span>
+                    </div>
+
+                    <!-- 图例说明 -->
+                    <div id="sheet-legend" class="flex flex-wrap items-center gap-3 text-xs text-slate-500 mb-4 pb-3 border-b border-slate-100">
+                        <span class="flex items-center gap-1"><i class="w-3 h-3 rounded-xs bg-slate-100 border border-slate-300 inline-block"></i> 未答</span>
+                        <span id="legend-answered" class="flex items-center gap-1"><i class="w-3 h-3 rounded-xs bg-indigo-600 inline-block"></i> 已答</span>
+                        <span id="legend-correct" class="hidden items-center gap-1"><i class="w-3 h-3 rounded-xs bg-emerald-500 inline-block"></i> 正确</span>
+                        <span id="legend-wrong" class="hidden items-center gap-1"><i class="w-3 h-3 rounded-xs bg-rose-500 inline-block"></i> 错误</span>
+                    </div>
+
+                    <!-- 题号按钮格子 -->
+                    <div id="answer-sheet-grid" class="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-5 gap-2 max-h-[380px] overflow-y-auto pr-1">
+                        <!-- 动态生成 1..N 按钮 -->
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ================= 视图 3：考试成绩单与本场错题解析 ================= -->
+        <section id="view-result" class="hidden max-w-4xl mx-auto space-y-6 animate-fade-in">
+            <!-- 成绩总览卡片 -->
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 sm:p-8 text-center relative overflow-hidden">
+                <div class="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500"></div>
+                
+                <span id="result-mode-tag" class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 mb-3">模拟考试成绩单</span>
+                <h2 class="text-2xl font-bold text-slate-800 mb-2">测验已完成！</h2>
+                <p id="result-comment" class="text-sm text-slate-500 mb-6">继续保持，错题已自动为您收录至错题本中。</p>
+
+                <!-- 分数大展示 -->
+                <div class="inline-flex flex-col items-center justify-center w-36 h-36 rounded-full bg-gradient-to-b from-indigo-50 to-white border-4 border-indigo-500/20 shadow-inner mb-6">
+                    <div class="flex items-baseline">
+                        <span id="result-final-score" class="text-4xl font-extrabold text-indigo-600">85</span>
+                        <span class="text-sm font-bold text-slate-400 ml-1">分</span>
+                    </div>
+                    <span class="text-xs text-slate-400 mt-1">满分 100 分</span>
+                </div>
+
+                <!-- 4项统计指标 -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 max-w-2xl mx-auto mb-8">
+                    <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+                        <div class="text-xs text-slate-400 mb-1">总题数</div>
+                        <div id="result-total-q" class="text-lg font-bold text-slate-800">100 题</div>
+                    </div>
+                    <div class="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-100">
+                        <div class="text-xs text-emerald-600 mb-1">答对题数</div>
+                        <div id="result-correct-q" class="text-lg font-bold text-emerald-700">85 题</div>
+                    </div>
+                    <div class="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-100">
+                        <div class="text-xs text-rose-600 mb-1">答错 / 未答</div>
+                        <div id="result-wrong-q" class="text-lg font-bold text-rose-700">15 题</div>
+                    </div>
+                    <div class="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-100">
+                        <div class="text-xs text-blue-600 mb-1">用时 / 正确率</div>
+                        <div id="result-time-acc" class="text-sm sm:text-base font-bold text-blue-700">12:30 (85%)</div>
+                    </div>
+                </div>
+
+                <!-- 快捷操作按钮 -->
+                <div class="flex flex-wrap items-center justify-center gap-3">
+                    <button id="retry-session-wrong-btn" onclick="retrySessionWrongQuestions()" class="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition">
+                        重练本场错题
+                    </button>
+                    <button onclick="restartSameConfig()" class="px-5 py-2.5 rounded-xl text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition">
+                        再抽一套新题
+                    </button>
+                    <button onclick="goHome()" class="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition">
+                        返回首页
+                    </button>
+                </div>
+            </div>
+
+            <!-- 本场错题本详细解析列表 -->
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 sm:p-8">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800">本场错题解析</h3>
+                        <p class="text-xs text-slate-500 mt-0.5">以下题目回答错误或未作答，已同步存入全局错题本</p>
+                    </div>
+                    <span id="session-wrong-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">共 0 道错题</span>
+                </div>
+
+                <div id="session-wrong-list" class="space-y-4">
+                    <!-- 动态渲染本场错题 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= 视图 4：全局持久化错题本 ================= -->
+        <section id="view-mistakes" class="hidden max-w-4xl mx-auto space-y-6 animate-fade-in">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 sm:p-8">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+                    <div>
+                        <div class="flex items-center gap-2.5">
+                            <h2 class="text-xl font-bold text-slate-800">我的专属错题本</h2>
+                            <span id="notebook-total-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700">0 题</span>
+                        </div>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-1">自动记录您在练习和考试中做错的题目（保存在当前浏览器本地）</p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <button id="practice-all-mistakes-btn" onclick="startAllMistakesPractice()" class="px-4 py-2 rounded-xl text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-xs transition">
+                            一键重练全部错题
+                        </button>
+                        <button onclick="exportMistakesToExcel()" class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition">
+                            导出错题 Excel
+                        </button>
+                        <button onclick="clearAllMistakesConfirm()" class="px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 transition">
+                            清空错题本
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 错题列表 -->
+                <div id="notebook-list-container" class="mt-6 space-y-4">
+                    <!-- 动态渲染持久化错题 -->
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="py-6 text-center text-xs text-slate-400">
+        Excel 智能刷题宝 · 专为个人高效刷题与模拟考试打造 · 数据完全本地运行
+    </footer>
+
+    <script>
+        // ==================== 全局状态管理 ====================
+        const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E'];
+        const STORAGE_KEY_MISTAKES = 'excel_quiz_mistake_notebook_v1';
+
+        let fullQuestionBank = [];      // 导入的全部有效题库
+        let filteredQuestionBank = [];  // 按题型筛选后的可用题库
+        let currentQuizQuestions = [];  // 当前抽卷的题目列表
+        let currentMode = 'practice';   // 'practice' | 'exam'
+        let currentIndex = 0;           // 当前题号索引 (0-based)
+        let userAnswers = {};           // { questionIndex: ['A'] 或 ['A', 'B'] }
+        let lockedQuestions = {};       // 练习模式下已提交判题的索引 { questionIndex: true }
+        let sessionWrongQuestions = []; // 本场做错的题目列表
+
+        // 计时器相关
+        let timerInterval = null;
+        let elapsedSeconds = 0;
+
+        // ==================== 初始化与拖拽监听 ====================
+        window.onload = function () {
+            updateMistakeBadge();
+            setupDragAndDrop();
+        };
+
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('drop-zone');
+            if (!dropZone) return;
+
+            ['dragenter', 'dragover'].forEach(evt => {
+                dropZone.addEventListener(evt, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.add('border-indigo-500', 'bg-indigo-50/50');
+                });
+            });
+
+            ['dragleave', 'drop'].forEach(evt => {
+                dropZone.addEventListener(evt, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/50');
+                });
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const files = e.dataTransfer.files;
+                if (files && files.length > 0) {
+                    processExcelFile(files[0]);
+                }
+            });
+        }
+
+        // ==================== 提示框与确认框工具 ====================
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const colors = {
+                success: 'bg-emerald-600 text-white',
+                error: 'bg-rose-600 text-white',
+                warning: 'bg-amber-500 text-white',
+                info: 'bg-slate-800 text-white'
+            };
+            toast.className = `${colors[type] || colors.info} px-4 py-3 rounded-2xl shadow-lg text-sm font-medium flex items-center justify-between gap-3 animate-fade-in pointer-events-auto`;
+            toast.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3200);
+        }
+
+        function showConfirm(title, message, onConfirm) {
+            const modal = document.getElementById('confirm-modal');
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-message').textContent = message;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            const cleanup = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            };
+
+            document.getElementById('confirm-cancel-btn').onclick = cleanup;
+            document.getElementById('confirm-ok-btn').onclick = () => {
+                cleanup();
+                onConfirm();
+            };
+        }
+
+        // ==================== Excel 解析与标准化核心逻辑 ====================
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                processExcelFile(file);
+            }
+            event.target.value = ''; // 允许重复选同一文件
+        }
+
+        function processExcelFile(file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+                    if (!rawRows || rawRows.length === 0) {
+                        showToast('Excel 表格内容为空，请检查第一张工作表！', 'error');
+                        return;
+                    }
+
+                    const parsed = parseRawRowsToQuestions(rawRows);
+                    if (parsed.length === 0) {
+                        showToast('未能识别到有效题目，请确保包含“题目”和“正确答案”列！', 'error');
+                        return;
+                    }
+
+                    applyLoadedBank(parsed, file.name);
+                    showToast(`成功导入 ${parsed.length} 道题目！`, 'success');
+                } catch (err) {
+                    console.error(err);
+                    showToast('文件解析失败，请确认是有效的 Excel 或 CSV 文件。', 'error');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        /**
+         * 将原始 Excel 行对象标准化为统一题目结构
+         * 匹配列名：题型, 题目, 选项1, 选项2, 选项3, 选项4, 选项5, 正确答案
+         */
+        function parseRawRowsToQuestions(rows) {
+            const validQuestions = [];
+
+            rows.forEach((row, idx) => {
+                // 清理键名空格
+                const cleanRow = {};
+                Object.keys(row).forEach(k => {
+                    cleanRow[String(k).trim()] = row[k];
+                });
+
+                const rawTitle = String(cleanRow['题目'] || cleanRow['题干'] || '').trim();
+                const rawAns = String(cleanRow['正确答案'] || cleanRow['答案'] || '').trim();
+
+                if (!rawTitle || !rawAns) return; // 跳过空行或无效行
+
+                // 提取选项1 ~ 选项5
+                const options = [];
+                for (let i = 1; i <= 5; i++) {
+                    const optVal = String(cleanRow[`选项${i}`] !== undefined ? cleanRow[`选项${i}`] : '').trim();
+                    if (optVal !== '') {
+                        options.push({
+                            letter: OPTION_LETTERS[options.length], // 顺次分配 A, B, C, D, E
+                            originalIndex: i,
+                            text: optVal
+                        });
+                    }
+                }
+
+                // 如果没有提供选项但答案是“对/错”，自动补全判断题选项
+                if (options.length === 0 && /^(对|错|正确|错误|T|F|TRUE|FALSE|√|×)$/i.test(rawAns)) {
+                    options.push({ letter: 'A', originalIndex: 1, text: '正确' });
+                    options.push({ letter: 'B', originalIndex: 2, text: '错误' });
+                }
+
+                if (options.length < 2) return; // 至少需要2个选项
+
+                // 标准化正确答案
+                const normalizedAnswers = normalizeAnswerString(rawAns, options);
+                if (normalizedAnswers.length === 0) return;
+
+                // 识别题型
+                let qType = String(cleanRow['题型'] || '').trim();
+                if (!qType) {
+                    if (normalizedAnswers.length > 1) {
+                        qType = '多选题';
+                    } else if (options.length === 2 && (options[0].text === '正确' || options[0].text === '对')) {
+                        qType = '判断题';
+                    } else {
+                        qType = '单选题';
+                    }
+                }
+
+                // 生成唯一ID用于错题本去重
+                const qId = simpleHash(qType + '::' + rawTitle + '::' + options.map(o => o.text).join('|'));
+
+                validQuestions.push({
+                    id: qId,
+                    type: qType,
+                    title: rawTitle,
+                    options: options,
+                    correctAnswers: normalizedAnswers, // 如 ['A'] 或 ['A', 'C']
+                    isMultiple: normalizedAnswers.length > 1 || qType.includes('多选')
+                });
+            });
+
+            return validQuestions;
+        }
+
+        /**
+         * 智能解析各种格式的“正确答案”
+         * 支持：'A', 'AB', 'A, B', '1', '12', '选项1', '对', '错', '√', '×' 等
+         */
+        function normalizeAnswerString(rawAns, options) {
+            const upper = rawAns.toUpperCase().replace(/[\s,，、;；.。]/g, '');
+
+            // 1. 判断题特殊中文/符号处理
+            if (['对', '正确', 'TRUE', 'T', '√', 'YES'].includes(upper)) {
+                const matchOpt = options.find(o => /^(对|正确|是|TRUE)/i.test(o.text));
+                return matchOpt ? [matchOpt.letter] : ['A'];
+            }
+            if (['错', '错误', 'FALSE', 'F', '×', 'X', 'NO'].includes(upper)) {
+                const matchOpt = options.find(o => /^(错|错误|否|FALSE)/i.test(o.text));
+                return matchOpt ? [matchOpt.letter] : ['B'];
+            }
+
+            // 2. 处理 "选项1", "选项2" 格式
+            const optNumMatches = upper.match(/选项([1-5])/g);
+            if (optNumMatches && optNumMatches.length > 0) {
+                const letters = optNumMatches.map(m => OPTION_LETTERS[parseInt(m.replace('选项', ''), 10) - 1]);
+                return Array.from(new Set(letters)).sort();
+            }
+
+            // 3. 处理纯字母组合 (如 A, AB, ACD)
+            if (/^[A-E]+$/.test(upper)) {
+                const validLetters = upper.split('').filter(ch => options.some(o => o.letter === ch));
+                return Array.from(new Set(validLetters)).sort();
+            }
+
+            // 4. 处理纯数字组合 (如 1, 12, 134 -> 对应 A, AB, ACD)
+            if (/^[1-5]+$/.test(upper)) {
+                const validLetters = upper.split('')
+                    .map(num => OPTION_LETTERS[parseInt(num, 10) - 1])
+                    .filter(ch => options.some(o => o.letter === ch));
+                return Array.from(new Set(validLetters)).sort();
+            }
+
+            // 5. 如果答案直接写的是选项文本本身
+            const textMatch = options.find(o => o.text.toUpperCase() === upper);
+            if (textMatch) {
+                return [textMatch.letter];
+            }
+
+            return [];
+        }
+
+        function simpleHash(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                hash |= 0;
+            }
+            return 'q_' + Math.abs(hash).toString(36);
+        }
+
+        function applyLoadedBank(questions, filename) {
+            fullQuestionBank = questions;
+
+            // 统计题型分布
+            const typeCounts = {};
+            questions.forEach(q => {
+                typeCounts[q.type] = (typeCounts[q.type] || 0) + 1;
+            });
+
+            const typeSummary = Object.entries(typeCounts)
+                .map(([t, c]) => `${t} ${c}道`)
+                .join(' · ');
+
+            document.getElementById('bank-status-card').classList.remove('hidden');
+            document.getElementById('bank-filename').textContent = filename;
+            document.getElementById('bank-stats-text').textContent = `共解析 ${questions.length} 道有效题目（${typeSummary}）`;
+
+            // 填充题型筛选下拉框
+            const filterSelect = document.getElementById('config-type-filter');
+            filterSelect.innerHTML = `<option value="ALL">全部题型混合随机 (${questions.length}题)</option>`;
+            Object.entries(typeCounts).forEach(([t, c]) => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = `仅刷【${t}】 (${c}题)`;
+                filterSelect.appendChild(opt);
+            });
+
+            // 激活第二步配置卡片
+            const configCard = document.getElementById('quiz-config-card');
+            configCard.classList.remove('opacity-60', 'pointer-events-none');
+
+            onTypeFilterChange();
+        }
+
+        function onTypeFilterChange() {
+            const selectedType = document.getElementById('config-type-filter').value;
+            if (selectedType === 'ALL') {
+                filteredQuestionBank = [...fullQuestionBank];
+            } else {
+                filteredQuestionBank = fullQuestionBank.filter(q => q.type === selectedType);
+            }
+
+            const totalAvail = filteredQuestionBank.length;
+            document.getElementById('config-filtered-total').textContent = `当前可选题库：${totalAvail} 题`;
+
+            const countInput = document.getElementById('config-question-count');
+            // 默认100道，如果题库不足100道则自动设为题库总数
+            countInput.value = Math.min(100, totalAvail);
+            countInput.max = totalAvail;
+
+            updateScorePreview();
+        }
+
+        function updateScorePreview() {
+            const totalAvail = filteredQuestionBank.length;
+            let count = parseInt(document.getElementById('config-question-count').value, 10) || 1;
+            if (count < 1) count = 1;
+            if (totalAvail > 0 && count > totalAvail) count = totalAvail;
+
+            const perScore = (100 / count);
+            const displayPerScore = Number.isInteger(perScore) ? perScore.toFixed(0) : perScore.toFixed(2);
+
+            document.getElementById('config-score-per-q').innerHTML =
+                `实际抽取 <span class="font-bold text-slate-700">${count}</span> 题，每题 <span class="font-bold text-indigo-600">${displayPerScore}</span> 分`;
+        }
+
+        // ==================== 示例题库与模板下载 ====================
+        function downloadTemplateExcel() {
+            const templateData = [
+                {
+                    '题型': '单选题',
+                    '题目': '在 Excel 中，用于求和的常用函数是哪一个？',
+                    '选项1': 'AVERAGE',
+                    '选项2': 'SUM',
+                    '选项3': 'COUNT',
+                    '选项4': 'MAX',
+                    '选项5': '',
+                    '正确答案': 'B'
+                },
+                {
+                    '题型': '多选题',
+                    '题目': '以下哪些属于常见的办公软件文件格式？',
+                    '选项1': '.xlsx',
+                    '选项2': '.docx',
+                    '选项3': '.pptx',
+                    '选项4': '.mp4',
+                    '选项5': '.pdf',
+                    '正确答案': 'ABCE'
+                },
+                {
+                    '题型': '判断题',
+                    '题目': 'Ctrl + S 快捷键在大多数编辑软件中用于保存当前文档。',
+                    '选项1': '正确',
+                    '选项2': '错误',
+                    '选项3': '',
+                    '选项4': '',
+                    '选项5': '',
+                    '正确答案': 'A'
+                }
+            ];
+
+            const ws = XLSX.utils.json_to_sheet(templateData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '标准题库模板');
+            XLSX.writeFile(wb, '标准刷题题库模板.xlsx');
+            showToast('标准 Excel 模板已开始下载！', 'success');
+        }
+
+        function loadSampleBank() {
+            const sampleRaw = [
+                { '题型': '单选题', '题目': '我国古代四大发明中，对航海事业发展起到决定性作用的是？', '选项1': '造纸术', '选项2': '指南针', '选项3': '火药', '选项4': '活字印刷术', '选项5': '', '正确答案': 'B' },
+                { '题型': '单选题', '题目': '计算机存储容量的基本单位是？', '选项1': '比特 (bit)', '选项2': '字节 (Byte)', '选项3': '千字节 (KB)', '选项4': '兆字节 (MB)', '选项5': '', '正确答案': 'B' },
+                { '题型': '多选题', '题目': '以下哪些城市属于中国的直辖市？', '选项1': '北京市', '选项2': '上海市', '选项3': '广州市', '选项4': '天津市', '选项5': '重庆市', '正确答案': 'ABDE' },
+                { '题型': '判断题', '题目': '光在真空中的传播速度约为每秒 30 万公里。', '选项1': '正确', '选项2': '错误', '选项3': '', '选项4': '', '选项5': '', '正确答案': 'A' },
+                { '题型': '单选题', '题目': '在 Excel 表格中，如果某行“选项5”为空，本刷题系统会如何处理？', '选项1': '显示空白选项框', '选项2': '自动智能隐藏该空选项', '选项3': '报错无法导入', '选项4': '自动填入无', '选项5': '', '正确答案': 'B' },
+                { '题型': '多选题', '题目': '下列属于可再生能源的有哪些？', '选项1': '太阳能', '选项2': '风能', '选项3': '煤炭', '选项4': '水能', '选项5': '天然气', '正确答案': 'ABD' },
+                { '题型': '判断题', '题目': '水在标准大气压下的沸点是 80 摄氏度。', '选项1': '正确', '选项2': '错误', '选项3': '', '选项4': '', '选项5': '', '正确答案': 'B' },
+                { '题型': '单选题', '题目': '中国空间站的核心舱被命名为什么？', '选项1': '天和核心舱', '选项2': '问天实验舱', '选项3': '梦天实验舱', '选项4': '天宫一号', '选项5': '', '正确答案': 'A' }
+            ];
+
+            const parsed = parseRawRowsToQuestions(sampleRaw);
+            applyLoadedBank(parsed, '内置综合演示题库.xlsx');
+            showToast('已加载内置演示题库，您可以直接体验练习或考试模式！', 'success');
+        }
+
+        // ==================== 启动刷题 / 考试核心逻辑 ====================
+        function startQuiz(mode, customQuestions = null) {
+            let pool = customQuestions || filteredQuestionBank;
+            if (!pool || pool.length === 0) {
+                showToast('请先导入题库后再开始！', 'warning');
+                return;
+            }
+
+            let targetCount = customQuestions
+                ? customQuestions.length
+                : (parseInt(document.getElementById('config-question-count').value, 10) || 100);
+
+            targetCount = Math.max(1, Math.min(targetCount, pool.length));
+
+            // 洗牌算法随机抽取 targetCount 道题
+            const shuffled = [...pool];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+
+            currentQuizQuestions = shuffled.slice(0, targetCount);
+            currentMode = mode;
+            currentIndex = 0;
+            userAnswers = {};
+            lockedQuestions = {};
+            sessionWrongQuestions = [];
+
+            setupQuizUI();
+            switchView('view-quiz');
+            startTimer();
+            renderCurrentQuestion();
+            renderAnswerSheet();
+        }
+
+        function setupQuizUI() {
+            const total = currentQuizQuestions.length;
+            const perPoint = (100 / total);
+            const pointStr = Number.isInteger(perPoint) ? perPoint.toFixed(0) : perPoint.toFixed(2);
+
+            const modeBadge = document.getElementById('quiz-mode-badge');
+            const submitBtn = document.getElementById('submit-quiz-btn');
+            const liveStats = document.getElementById('practice-live-stats');
+            const autoNextWrap = document.getElementById('auto-next-wrapper');
+
+            // 答题卡图例切换
+            const legendAnswered = document.getElementById('legend-answered');
+            const legendCorrect = document.getElementById('legend-correct');
+            const legendWrong = document.getElementById('legend-wrong');
+
+            document.getElementById('quiz-score-unit-badge').textContent = `每题 ${pointStr} 分 · 满分 100 分`;
+            document.getElementById('q-point-tag').textContent = `本题 ${pointStr} 分`;
+
+            if (currentMode === 'practice') {
+                modeBadge.textContent = '练习模式（即时看答案）';
+                modeBadge.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700';
+                submitBtn.textContent = '结束练习并结算';
+                submitBtn.className = 'px-4 py-2 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition';
+                liveStats.classList.remove('hidden');
+                liveStats.classList.add('flex');
+                autoNextWrap.classList.remove('hidden');
+                autoNextWrap.classList.add('sm:flex');
+
+                legendAnswered.classList.add('hidden');
+                legendCorrect.classList.remove('hidden');
+                legendCorrect.classList.add('flex');
+                legendWrong.classList.remove('hidden');
+                legendWrong.classList.add('flex');
+            } else {
+                modeBadge.textContent = '模拟考试模式';
+                modeBadge.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700';
+                submitBtn.textContent = '交卷评分';
+                submitBtn.className = 'px-4 py-2 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs transition';
+                liveStats.classList.add('hidden');
+                liveStats.classList.remove('flex');
+                autoNextWrap.classList.add('hidden');
+                autoNextWrap.classList.remove('sm:flex');
+
+                legendAnswered.classList.remove('hidden');
+                legendCorrect.classList.add('hidden');
+                legendWrong.classList.add('hidden');
+            }
+
+            updateLivePracticeStats();
+        }
+
+        // ==================== 题目渲染与交互 ====================
+        function renderCurrentQuestion() {
+            const q = currentQuizQuestions[currentIndex];
+            const total = currentQuizQuestions.length;
+
+            document.getElementById('quiz-progress-text').textContent = `${currentIndex + 1} / ${total}`;
+            document.getElementById('q-number-badge').textContent = `第 ${currentIndex + 1} 题`;
+            document.getElementById('q-type-badge').textContent = q.type;
+            document.getElementById('q-title-text').textContent = q.title;
+
+            // 上一题/下一题按钮状态
+            document.getElementById('prev-q-btn').disabled = (currentIndex === 0);
+            const nextBtn = document.getElementById('next-q-btn');
+            if (currentIndex === total - 1) {
+                nextBtn.innerHTML = `完成并交卷 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`;
+                nextBtn.disabled = false;
+            } else {
+                nextBtn.innerHTML = `下一题 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>`;
+                nextBtn.disabled = false;
+            }
+
+            const selected = userAnswers[currentIndex] || [];
+            const isLocked = (currentMode === 'practice' && !!lockedQuestions[currentIndex]);
+
+            // 多选题确认条显示控制
+            const multiBar = document.getElementById('multi-submit-bar');
+            if (q.isMultiple && !isLocked) {
+                multiBar.classList.remove('hidden');
+            } else {
+                multiBar.classList.add('hidden');
+            }
+
+            // 渲染选项卡片
+            const container = document.getElementById('q-options-container');
+            container.innerHTML = '';
+
+            q.options.forEach(opt => {
+                const isSelected = selected.includes(opt.letter);
+                const isCorrectOpt = q.correctAnswers.includes(opt.letter);
+
+                let cardStyle = 'border-slate-200 bg-white hover:border-indigo-400 hover:bg-slate-50/80 text-slate-700';
+                let badgeStyle = 'bg-slate-100 text-slate-600 border-slate-300';
+                let statusIconHtml = '';
+
+                if (isLocked) {
+                    // 练习模式已判题状态
+                    if (isCorrectOpt) {
+                        cardStyle = 'border-emerald-500 bg-emerald-50/90 text-emerald-950 font-medium';
+                        badgeStyle = 'bg-emerald-600 text-white border-emerald-600';
+                        statusIconHtml = `<span class="ml-auto text-emerald-600 font-bold text-sm flex items-center gap-1">✓ 正确答案</span>`;
+                    } else if (isSelected && !isCorrectOpt) {
+                        cardStyle = 'border-rose-500 bg-rose-50/90 text-rose-950';
+                        badgeStyle = 'bg-rose-600 text-white border-rose-600';
+                        statusIconHtml = `<span class="ml-auto text-rose-600 font-bold text-sm flex items-center gap-1">✕ 误选</span>`;
+                    } else {
+                        cardStyle = 'border-slate-200 bg-slate-50/50 text-slate-400 opacity-75';
+                    }
+                } else if (isSelected) {
+                    // 选中但未判题状态
+                    cardStyle = 'border-indigo-600 bg-indigo-50/80 text-indigo-950 font-medium shadow-2xs';
+                    badgeStyle = 'bg-indigo-600 text-white border-indigo-600';
+                }
+
+                const btn = document.createElement('div');
+                btn.className = `option-card flex items-center gap-3.5 p-4 rounded-2xl border-2 cursor-pointer select-none ${cardStyle}`;
+                btn.innerHTML = `
+                    <span class="w-8 h-8 rounded-xl border flex items-center justify-center text-sm font-bold shrink-0 transition ${badgeStyle}">
+                        ${opt.letter}
+                    </span>
+                    <span class="text-sm sm:text-base leading-snug break-all">${escapeHtml(opt.text)}</span>
+                    ${statusIconHtml}
+                `;
+
+                if (!isLocked) {
+                    btn.onclick = () => handleOptionClick(opt.letter);
+                }
+
+                container.appendChild(btn);
+            });
+
+            // 练习模式反馈面板
+            renderPracticeFeedback(q, selected, isLocked);
+            highlightActiveSheetButton();
+        }
+
+        function handleOptionClick(letter) {
+            const q = currentQuizQuestions[currentIndex];
+            if (currentMode === 'practice' && lockedQuestions[currentIndex]) return;
+
+            if (!q.isMultiple) {
+                // 单选题 / 判断题
+                userAnswers[currentIndex] = [letter];
+
+                if (currentMode === 'practice') {
+                    evaluatePracticeQuestion(currentIndex);
+                } else {
+                    renderCurrentQuestion();
+                    renderAnswerSheet();
+                }
+            } else {
+                // 多选题：切换选中状态
+                const currentSel = userAnswers[currentIndex] || [];
+                if (currentSel.includes(letter)) {
+                    userAnswers[currentIndex] = currentSel.filter(l => l !== letter);
+                } else {
+                    userAnswers[currentIndex] = [...currentSel, letter].sort();
+                }
+                renderCurrentQuestion();
+                renderAnswerSheet();
+            }
+        }
+
+        function confirmMultiChoiceAnswer() {
+            const selected = userAnswers[currentIndex] || [];
+            if (selected.length === 0) {
+                showToast('请至少选择一个选项后再确认！', 'warning');
+                return;
+            }
+            if (currentMode === 'practice') {
+                evaluatePracticeQuestion(currentIndex);
+            } else {
+                navigateQuestion(1);
+            }
+        }
+
+        function evaluatePracticeQuestion(idx) {
+            lockedQuestions[idx] = true;
+            const q = currentQuizQuestions[idx];
+            const selected = userAnswers[idx] || [];
+            const isCorrect = arraysEqual(selected, q.correctAnswers);
+
+            if (!isCorrect) {
+                saveMistakeToNotebook(q, selected);
+            }
+
+            updateLivePracticeStats();
+            renderCurrentQuestion();
+            renderAnswerSheet();
+
+            // 如果答对且开启了自动跳题，延迟 650ms 自动进入下一题
+            const autoNext = document.getElementById('auto-next-checkbox').checked;
+            if (isCorrect && autoNext && idx < currentQuizQuestions.length - 1) {
+                setTimeout(() => {
+                    if (currentIndex === idx && currentMode === 'practice') {
+                        navigateQuestion(1);
+                    }
+                }, 650);
+            }
+        }
+
+        function renderPracticeFeedback(q, selected, isLocked) {
+            const box = document.getElementById('practice-feedback-box');
+            if (currentMode !== 'practice' || !isLocked) {
+                box.classList.add('hidden');
+                return;
+            }
+
+            const isCorrect = arraysEqual(selected, q.correctAnswers);
+            box.classList.remove('hidden');
+
+            const icon = document.getElementById('feedback-status-icon');
+            const title = document.getElementById('feedback-status-title');
+            const correctAnsEl = document.getElementById('feedback-correct-ans');
+            const userAnsRow = document.getElementById('feedback-user-ans-row');
+            const userAnsEl = document.getElementById('feedback-user-ans');
+
+            correctAnsEl.textContent = q.correctAnswers.join('');
+
+            if (isCorrect) {
+                box.className = 'rounded-2xl p-4 sm:p-5 mb-6 border border-emerald-200 bg-emerald-50/70 animate-fade-in';
+                icon.className = 'w-6 h-6 rounded-full flex items-center justify-center bg-emerald-600 text-white text-xs font-bold';
+                icon.textContent = '✓';
+                title.className = 'font-bold text-base text-emerald-800';
+                title.textContent = '回答正确！';
+                userAnsRow.classList.add('hidden');
+            } else {
+                box.className = 'rounded-2xl p-4 sm:p-5 mb-6 border border-rose-200 bg-rose-50/70 animate-fade-in';
+                icon.className = 'w-6 h-6 rounded-full flex items-center justify-center bg-rose-600 text-white text-xs font-bold';
+                icon.textContent = '✕';
+                title.className = 'font-bold text-base text-rose-800';
+                title.textContent = '回答错误（已自动加入错题本）';
+                userAnsRow.classList.remove('hidden');
+                userAnsEl.textContent = selected.length > 0 ? selected.join('') : '未作答';
+            }
+        }
+
+        function navigateQuestion(step) {
+            const nextIdx = currentIndex + step;
+            if (nextIdx >= currentQuizQuestions.length) {
+                handleSubmitQuizClick();
+                return;
+            }
+            if (nextIdx >= 0 && nextIdx < currentQuizQuestions.length) {
+                currentIndex = nextIdx;
+                renderCurrentQuestion();
+            }
+        }
+
+        // ==================== 右侧答题卡渲染 ====================
+        function renderAnswerSheet() {
+            const grid = document.getElementById('answer-sheet-grid');
+            grid.innerHTML = '';
+
+            let answeredCount = 0;
+
+            currentQuizQuestions.forEach((q, idx) => {
+                const selected = userAnswers[idx] || [];
+                const hasAnswered = selected.length > 0;
+                if (hasAnswered) answeredCount++;
+
+                const btn = document.createElement('button');
+                btn.id = `sheet-btn-${idx}`;
+                btn.textContent = idx + 1;
+
+                let style = 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200';
+
+                if (currentMode === 'practice' && lockedQuestions[idx]) {
+                    const isCorrect = arraysEqual(selected, q.correctAnswers);
+                    style = isCorrect
+                        ? 'bg-emerald-500 text-white border-emerald-600 font-bold'
+                        : 'bg-rose-500 text-white border-rose-600 font-bold';
+                } else if (hasAnswered) {
+                    style = 'bg-indigo-600 text-white border-indigo-600 font-bold';
+                }
+
+                btn.className = `h-9 rounded-xl border text-xs transition flex items-center justify-center ${style}`;
+                btn.onclick = () => {
+                    currentIndex = idx;
+                    renderCurrentQuestion();
+                };
+
+                grid.appendChild(btn);
+            });
+
+            document.getElementById('sheet-answered-summary').textContent = `已答 ${answeredCount} / ${currentQuizQuestions.length}`;
+            highlightActiveSheetButton();
+        }
+
+        function highlightActiveSheetButton() {
+            currentQuizQuestions.forEach((_, idx) => {
+                const btn = document.getElementById(`sheet-btn-${idx}`);
+                if (!btn) return;
+                if (idx === currentIndex) {
+                    btn.classList.add('ring-2', 'ring-offset-1', 'ring-slate-800');
+                } else {
+                    btn.classList.remove('ring-2', 'ring-offset-1', 'ring-slate-800');
+                }
+            });
+        }
+
+        function updateLivePracticeStats() {
+            let correct = 0;
+            let wrong = 0;
+            Object.keys(lockedQuestions).forEach(k => {
+                const idx = parseInt(k, 10);
+                const q = currentQuizQuestions[idx];
+                const sel = userAnswers[idx] || [];
+                if (arraysEqual(sel, q.correctAnswers)) correct++;
+                else wrong++;
+            });
+            document.getElementById('live-correct-num').textContent = correct;
+            document.getElementById('live-wrong-num').textContent = wrong;
+        }
+
+        // ==================== 交卷与结算评分逻辑 ====================
+        function handleSubmitQuizClick() {
+            const total = currentQuizQuestions.length;
+            let answeredCount = 0;
+            for (let i = 0; i < total; i++) {
+                if (userAnswers[i] && userAnswers[i].length > 0) answeredCount++;
+            }
+
+            const unanswered = total - answeredCount;
+            const title = currentMode === 'exam' ? '确认交卷？' : '确认结束当前练习？';
+            const msg = unanswered > 0
+                ? `您还有 ${unanswered} 道题目未作答，未答题目将按 0 分计算。确定现在提交吗？`
+                : `全部 ${total} 道题目均已完成，确定提交并查看最终成绩吗？`;
+
+            showConfirm(title, msg, () => {
+                finalizeAndGradeQuiz();
+            });
+        }
+
+        function finalizeAndGradeQuiz() {
+            stopTimer();
+
+            const total = currentQuizQuestions.length;
+            const pointPerQuestion = 100 / total;
+            let correctCount = 0;
+            sessionWrongQuestions = [];
+
+            currentQuizQuestions.forEach((q, idx) => {
+                const selected = userAnswers[idx] || [];
+                const isCorrect = arraysEqual(selected, q.correctAnswers);
+                if (isCorrect) {
+                    correctCount++;
+                } else {
+                    sessionWrongQuestions.push({
+                        question: q,
+                        userSelected: selected,
+                        questionIndex: idx + 1
+                    });
+                    // 存入持久化错题本
+                    saveMistakeToNotebook(q, selected);
+                }
+            });
+
+            const wrongCount = total - correctCount;
+            const rawScore = correctCount * pointPerQuestion;
+            const finalScoreDisplay = Number.isInteger(rawScore) ? rawScore.toFixed(0) : rawScore.toFixed(1);
+            const accuracy = Math.round((correctCount / total) * 100);
+
+            // 填充成绩单数据
+            document.getElementById('result-mode-tag').textContent = currentMode === 'exam' ? '模拟考试成绩单' : '练习模式结算单';
+            document.getElementById('result-final-score').textContent = finalScoreDisplay;
+            document.getElementById('result-total-q').textContent = `${total} 题`;
+            document.getElementById('result-correct-q').textContent = `${correctCount} 题`;
+            document.getElementById('result-wrong-q').textContent = `${wrongCount} 题`;
+            document.getElementById('result-time-acc').textContent = `${formatDuration(elapsedSeconds)} (${accuracy}%)`;
+
+            // 评语
+            let comment = '';
+            if (rawScore >= 90) comment = '太棒了！成绩非常优异，知识掌握得十分扎实！';
+            else if (rawScore >= 80) comment = '表现很不错！再巩固一下错题就能冲击满分啦！';
+            else if (rawScore >= 60) comment = '已顺利及格！建议重点复习下方的本场错题解析。';
+            else comment = '继续加油！多使用练习模式刷几遍错题，成绩很快就会提升！';
+            document.getElementById('result-comment').textContent = comment;
+
+            // 渲染本场错题列表
+            renderSessionWrongList();
+            switchView('view-result');
+        }
+
+        function renderSessionWrongList() {
+            const listEl = document.getElementById('session-wrong-list');
+            const badge = document.getElementById('session-wrong-badge');
+            const retryBtn = document.getElementById('retry-session-wrong-btn');
+
+            badge.textContent = `共 ${sessionWrongQuestions.length} 道错题`;
+
+            if (sessionWrongQuestions.length === 0) {
+                retryBtn.classList.add('hidden');
+                listEl.innerHTML = `
+                    <div class="text-center py-10 bg-emerald-50/60 rounded-2xl border border-emerald-100">
+                        <div class="text-3xl mb-2">🎉</div>
+                        <p class="font-bold text-emerald-800">太厉害了！本场全部答对，零错题！</p>
+                    </div>
+                `;
+                return;
+            }
+
+            retryBtn.classList.remove('hidden');
+            listEl.innerHTML = sessionWrongQuestions.map((item, i) => {
+                const q = item.question;
+                const userAnsText = item.userSelected.length > 0 ? item.userSelected.join('') : '未作答';
+                const correctAnsText = q.correctAnswers.join('');
+
+                const optionsHtml = q.options.map(opt => {
+                    const isRight = q.correctAnswers.includes(opt.letter);
+                    const isUserWrong = item.userSelected.includes(opt.letter) && !isRight;
+                    let cls = 'text-slate-600 bg-slate-50 border-slate-200/60';
+                    if (isRight) cls = 'text-emerald-800 bg-emerald-50 border-emerald-300 font-semibold';
+                    else if (isUserWrong) cls = 'text-rose-800 bg-rose-50 border-rose-300 line-through';
+
+                    return `<div class="px-3 py-2 rounded-xl border text-xs sm:text-sm ${cls}">
+                        <span class="font-bold mr-1.5">${opt.letter}.</span>${escapeHtml(opt.text)}
+                    </div>`;
+                }).join('');
+
+                return `
+                    <div class="p-5 rounded-2xl border border-slate-200 bg-white space-y-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs font-bold px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700">原卷第 ${item.questionIndex} 题 · ${q.type}</span>
+                            <div class="text-xs font-bold">
+                                <span class="text-rose-600 mr-3">你的答案：${userAnsText}</span>
+                                <span class="text-emerald-600">正确答案：${correctAnsText}</span>
+                            </div>
+                        </div>
+                        <p class="font-semibold text-slate-800 text-sm sm:text-base leading-relaxed">${escapeHtml(q.title)}</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                            ${optionsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function retrySessionWrongQuestions() {
+            if (sessionWrongQuestions.length === 0) return;
+            const wrongQs = sessionWrongQuestions.map(item => item.question);
+            startQuiz('practice', wrongQs);
+            showToast(`已开启本场 ${wrongQs.length} 道错题的专项练习！`, 'info');
+        }
+
+        function restartSameConfig() {
+            startQuiz(currentMode);
+        }
+
+        // ==================== 全局持久化错题本 (LocalStorage) ====================
+        function getStoredMistakes() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY_MISTAKES);
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveStoredMistakes(list) {
+            try {
+                localStorage.setItem(STORAGE_KEY_MISTAKES, JSON.stringify(list));
+                updateMistakeBadge();
+            } catch (e) {
+                console.error('保存错题本失败', e);
+            }
+        }
+
+        function saveMistakeToNotebook(question, userSelected) {
+            const list = getStoredMistakes();
+            const existingIdx = list.findIndex(item => item.question.id === question.id);
+
+            const record = {
+                question: question,
+                lastUserAnswer: userSelected,
+                wrongCount: existingIdx >= 0 ? (list[existingIdx].wrongCount + 1) : 1,
+                updatedAt: new Date().toLocaleString('zh-CN', { hour12: false })
+            };
+
+            if (existingIdx >= 0) {
+                list.splice(existingIdx, 1);
+            }
+            list.unshift(record); // 最新错题排在最前面
+            saveStoredMistakes(list);
+        }
+
+        function removeSingleMistake(qId) {
+            const list = getStoredMistakes().filter(item => item.question.id !== qId);
+            saveStoredMistakes(list);
+            renderMistakeNotebook();
+            showToast('已将该题移出错题本', 'success');
+        }
+
+        function clearAllMistakesConfirm() {
+            const list = getStoredMistakes();
+            if (list.length === 0) {
+                showToast('错题本已经是空的啦', 'info');
+                return;
+            }
+            showConfirm('清空错题本', '确定要清空所有历史错题记录吗？此操作不可恢复。', () => {
+                saveStoredMistakes([]);
+                renderMistakeNotebook();
+                showToast('错题本已清空', 'success');
+            });
+        }
+
+        function updateMistakeBadge() {
+            const count = getStoredMistakes().length;
+            document.getElementById('nav-mistake-count').textContent = count;
+        }
+
+        function openMistakeNotebook() {
+            stopTimer();
+            renderMistakeNotebook();
+            switchView('view-mistakes');
+        }
+
+        function renderMistakeNotebook() {
+            const list = getStoredMistakes();
+            const container = document.getElementById('notebook-list-container');
+            const badge = document.getElementById('notebook-total-badge');
+            const practiceBtn = document.getElementById('practice-all-mistakes-btn');
+
+            badge.textContent = `${list.length} 题`;
+
+            if (list.length === 0) {
+                practiceBtn.classList.add('opacity-50', 'pointer-events-none');
+                container.innerHTML = `
+                    <div class="text-center py-16 px-4">
+                        <div class="w-16 h-16 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mb-4">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <h3 class="text-base font-bold text-slate-700">暂无错题记录</h3>
+                        <p class="text-xs text-slate-400 mt-1">在练习或考试中答错的题目会自动汇总到这里，方便您随时复习。</p>
+                    </div>
+                `;
+                return;
+            }
+
+            practiceBtn.classList.remove('opacity-50', 'pointer-events-none');
+            container.innerHTML = list.map((item, idx) => {
+                const q = item.question;
+                const userAns = item.lastUserAnswer && item.lastUserAnswer.length > 0 ? item.lastUserAnswer.join('') : '未作答';
+
+                const optionsHtml = q.options.map(opt => {
+                    const isRight = q.correctAnswers.includes(opt.letter);
+                    return `<div class="px-3 py-1.5 rounded-lg text-xs sm:text-sm ${isRight ? 'bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200' : 'text-slate-600 bg-slate-50'}">
+                        <span class="font-bold mr-1">${opt.letter}.</span>${escapeHtml(opt.text)}
+                    </div>`;
+                }).join('');
+
+                return `
+                    <div class="p-5 rounded-2xl border border-slate-200 hover:border-slate-300 bg-white transition space-y-3">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-bold">#${idx + 1} ${q.type}</span>
+                                <span class="text-xs text-rose-600 font-medium">累计错 ${item.wrongCount} 次</span>
+                            </div>
+                            <button onclick="removeSingleMistake('${q.id}')" class="text-xs text-slate-400 hover:text-emerald-600 font-medium transition">
+                                ✓ 我已掌握，移出错题本
+                            </button>
+                        </div>
+                        <p class="font-semibold text-slate-800 text-sm sm:text-base">${escapeHtml(q.title)}</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            ${optionsHtml}
+                        </div>
+                        <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                            <div>
+                                <span class="text-emerald-600 font-bold mr-4">正确答案：${q.correctAnswers.join('')}</span>
+                                <span class="text-rose-500">上次误选：${userAns}</span>
+                            </div>
+                            <span class="text-slate-400">${item.updatedAt}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function startAllMistakesPractice() {
+            const list = getStoredMistakes();
+            if (list.length === 0) return;
+            const qs = list.map(item => item.question);
+            startQuiz('practice', qs);
+            showToast(`已载入全部 ${qs.length} 道历史错题，开始重练！`, 'info');
+        }
+
+        function exportMistakesToExcel() {
+            const list = getStoredMistakes();
+            if (list.length === 0) {
+                showToast('当前没有可导出的错题！', 'warning');
+                return;
+            }
+
+            const exportRows = list.map(item => {
+                const q = item.question;
+                const row = {
+                    '题型': q.type,
+                    '题目': q.title,
+                    '选项1': q.options[0] ? q.options[0].text : '',
+                    '选项2': q.options[1] ? q.options[1].text : '',
+                    '选项3': q.options[2] ? q.options[2].text : '',
+                    '选项4': q.options[3] ? q.options[3].text : '',
+                    '选项5': q.options[4] ? q.options[4].text : '',
+                    '正确答案': q.correctAnswers.join(''),
+                    '错误次数': item.wrongCount
+                };
+                return row;
+            });
+
+            const ws = XLSX.utils.json_to_sheet(exportRows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '我的错题本');
+            XLSX.writeFile(wb, `我的错题本_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            showToast('错题本已导出为 Excel 文件！', 'success');
+        }
+
+        // ==================== 视图切换与计时器工具 ====================
+        function switchView(viewId) {
+            ['view-home', 'view-quiz', 'view-result', 'view-mistakes'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            document.getElementById(viewId).classList.remove('hidden');
+
+            const homeBtn = document.getElementById('header-home-btn');
+            if (viewId === 'view-home') {
+                homeBtn.classList.add('hidden');
+                homeBtn.classList.remove('flex');
+            } else {
+                homeBtn.classList.remove('hidden');
+                homeBtn.classList.add('flex');
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function confirmReturnHome() {
+            const quizViewVisible = !document.getElementById('view-quiz').classList.contains('hidden');
+            if (quizViewVisible) {
+                showConfirm('退出当前答题？', '当前答题进度尚未结算，确定要返回首页吗？', () => {
+                    goHome();
+                });
+            } else {
+                goHome();
+            }
+        }
+
+        function goHome() {
+            stopTimer();
+            switchView('view-home');
+        }
+
+        function startTimer() {
+            stopTimer();
+            elapsedSeconds = 0;
+            updateTimerDisplay();
+            timerInterval = setInterval(() => {
+                elapsedSeconds++;
+                updateTimerDisplay();
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        function updateTimerDisplay() {
+            document.getElementById('exam-timer-display').textContent = formatDuration(elapsedSeconds);
+        }
+
+        function formatDuration(sec) {
+            const m = Math.floor(sec / 60).toString().padStart(2, '0');
+            const s = (sec % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function arraysEqual(a, b) {
+            if (!a || !b || a.length !== b.length) return false;
+            const sA = [...a].sort();
+            const sB = [...b].sort();
+            return sA.every((val, index) => val === sB[index]);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
